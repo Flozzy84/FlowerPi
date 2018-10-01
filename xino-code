@@ -1,0 +1,132 @@
+// Final code for moistcontrol with LCD
+
+// Load and setup LCD library
+#include <LiquidCrystal.h>
+LiquidCrystal lcd(4, 5, 6, 7, 12, 9); // Pins for RS, E, DB4, DB5, DB6, DB7
+
+// Device ID set to standard "--"
+#define deviceID1 '-'
+#define deviceID2 '-'
+
+String msg;	  // Storage for incoming message
+String time;      // Time to show on LCD
+String reply;     // Sorage for reply
+String lcdreply;  // Storage for first line of LCD
+String lcdreply2; // Storage for second line of LCD
+
+void setup()
+{
+  Serial.begin(115200);    // Start the serial port at 115200 baud
+  pinMode(13, OUTPUT);    // Initialize pin 13 as digital output (LED)
+  pinMode(8, OUTPUT);    // Initialize pin 8 to control the radio
+  digitalWrite(8, HIGH);    // Start radio
+  Serial.print("a");    // Send a started msg "a--STARTED--"
+  Serial.write(deviceID1);
+  Serial.write(deviceID2);
+  Serial.print("STARTED--");
+  lcd.begin(16, 2);     // Start the LCD and show startup msg
+  lcd.clear();
+  lcdreply2 = "Go! =)";
+  lcd.setCursor(0, 0);
+  lcd.print("Moist Control by");
+  lcd.setCursor(0, 1);
+  lcd.print("Daniel Larsson");
+  delay(15000);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Ready!");
+}
+
+void loop() // Repeatedly called
+{
+  if (Serial.available() >= 12) // Is there enough characters for a msg?
+  {
+    if (Serial.read() == 'a') // Correct start of msg?
+    {
+		msg = "a";
+		for (byte i=0; i<11; i++)  // 11 characters in the msg body
+		{
+			msg += (char)Serial.read();
+		}
+		if (msg.charAt(1) == deviceID1 && msg.charAt(2) == deviceID2)  // Msg is for this device
+		{
+			reply = msg;
+			msg = msg.substring(3);
+			if (msg.compareTo("HELLO----") == 0) // If HELLO, send HELLO back
+			{
+	                  ;
+			}
+                        if (msg.charAt(2) == ':') // If 3:d character is a ":" it's time
+       			{
+	                        lcd.setCursor(11, 0);
+                                time = msg.substring(0,5);
+                                lcd.print(time);                                
+    			}
+			else	//It is an action message
+			{
+				byte typeOfIO;
+				byte ioNumber;
+				typeOfIO = msg.charAt(0);
+				ioNumber = (msg.charAt(1) - '0') * 10 + msg.charAt(2) - '0';
+				msg = msg.substring(3);
+				if (msg.compareTo("INPUT-") == 0)
+				{
+					if (ioNumber > 1) pinMode(ioNumber,INPUT);
+				}
+				else if (msg.compareTo("OUTPUT") == 0)
+				{
+					if (ioNumber > 1) pinMode(ioNumber,OUTPUT);
+				}
+				else if (msg.compareTo("HIGH--") == 0)
+				{
+					if (ioNumber > 1) digitalWrite(ioNumber,HIGH);
+				}
+				else if (msg.compareTo("LOW---") == 0)
+				{
+					if (ioNumber > 1) digitalWrite(ioNumber,LOW);
+				}
+				else if (msg.startsWith("PWM"))
+				{
+					byte val = ((msg.charAt(3) - '0') * 10 + msg.charAt(4) - '0') * 10 + msg.charAt(5) - '0';
+					if (ioNumber > 1) analogWrite(ioNumber,val);
+				}
+				else if (msg.compareTo("READ--") == 0)
+				{
+					reply = reply.substring(0,6);
+					if (typeOfIO == 'A')
+					{
+						int val = analogRead(ioNumber);
+						reply = reply + "+" + val;
+                                                lcdreply = reply.substring(3);
+			    	                lcd.setCursor(0, 1); // Write last info on second LCD line
+                                                lcd.print(lcdreply2);
+                                                lcd.setCursor(0, 0); // Write new info on first LCD line
+                                                lcd.print(lcdreply);
+                                                lcdreply2 = lcdreply; // Overwrite reply2 with latest reply
+					}
+					else
+					{
+						byte val = digitalRead(ioNumber);
+						if (val)
+						{
+							reply = reply + "HIGH";
+						}
+						else
+						{
+							reply = reply + "LOW";
+						}
+					}
+				}
+				else	// If not a valid msg send ERROR
+					reply = reply.substring(0,3) + "ERROR----";
+			}
+		}
+		if (reply.length() < 12)
+		{
+			byte i = 12-reply.length();
+			while (i--) reply += '-';
+		}
+        Serial.print(reply); // Send confirmation reply
+      }
+  }
+}
